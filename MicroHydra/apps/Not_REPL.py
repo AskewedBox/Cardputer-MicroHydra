@@ -1,3 +1,4 @@
+# Version 0.02 Added better input handling for multiline inputs to allow my functions to be entered.
 # For MicroPython on the M5 Cardputer
 # Based on and intended for use with MicroHydra by echo-lalia
 # https://github.com/echo-lalia/Cardputer-MicroHydra/tree/main
@@ -11,6 +12,10 @@ from lib import st7789py as st7789
 from lib import keyboard
 from font import vga1_8x16 as font
 import utime
+import os
+import time
+from machine import RTC
+import sys
 
 # Constants
 CMD_PREFIX = "CMD: "
@@ -24,6 +29,10 @@ font_height = 16
 max_chars_per_line = display_width // font_width
 black = const(0)
 white = const(65535)
+display_lines = 7  # Define the display_lines variable
+command_history = []
+history_index = 0
+scroll_x = 0
 
 # Initialize display
 spi = SPI(1, baudrate=40000000, sck=Pin(36), mosi=Pin(35), miso=None)
@@ -44,100 +53,128 @@ kb = keyboard.KeyBoard()
 
 # Initialize variables
 buffer = ""
+current_line = ""
 lines = []
-display_lines = 7
 x_offset = 0
 y_offset = 0
-x = x_offset
-y = display_height - font_height
+display_x = x_offset
+display_y = display_height - font_height
+
 
 # Function to display text on the screen
-def d_print(text):
-    global x, y
+def d_print(text, prefix=""):
+    global display_x, display_y
     if text is None:
         text = "None"
     text = str(text)
-    lines.append(text)
+    lines.extend([prefix + line for line in text.split('\n')])  # Add prefix to each line
     while len(lines) > display_lines:
         lines.pop(0)
-    y = display_height - font_height*2
+    display_y = display_height - font_height * 2
     for line in reversed(lines):
-        tft.fill_rect(0, y, display_width, font_height, black)
-        x = x_offset
+        tft.fill_rect(0, display_y, display_width, font_height, black)
+        display_x = x_offset
         for char in line:
-            tft.text(font, char, x, y, white, black)
-            x += font_width
-        y -= font_height
+            tft.text(font, char, display_x, display_y, white, black)
+            display_x += font_width
+        display_y -= font_height
+
+# Function to handle the addition of characters
+def add_character(char, display_char=None):
+    global buffer, current_line, display_x, display_y
+    buffer += char
+    current_line += display_char if display_char else char
+    if len(current_line) > max_chars_per_line:
+        current_line = current_line[-1]
+        display_y += font_height
+        if display_y + font_height > display_height:
+            display_y = y_offset
+            tft.fill_rect(0, 0, display_width, display_height - font_height, black)
+    tft.text(font, current_line[-1], display_x, display_y, white, black)
+    display_x += len(char) * font_width
+    if display_x + font_width > display_width:
+        display_x = x_offset
+        display_y += font_height
+        if display_y + font_height > display_height:
+            display_y = y_offset
+            tft.fill_rect(0, 0, display_width, display_height - font_height, black)
+# Function to handle the remove of characters
+def remove_character():
+    global buffer, current_line, display_x, display_y
+    buffer = buffer[:-1]
+    current_line = current_line[:-1]
+    display_x -= font_width
+    if display_x < 0:
+        display_x = (max_chars_per_line - 1) * font_width
+        display_y -= font_height
+        if display_y < 0:
+            display_y = display_height - font_height
+    tft.fill_rect(display_x, display_y, font_width, font_height, black)
+
+def execute_command():
+    global buffer
+    buffer = buffer.strip()
+    if buffer:
+        try:
+            exec(buffer)
+            result = None
+            d_print(buffer, CMD_PREFIX)
+            buffer = ""
+            if result is not None:
+                print(result)
+                d_print(str(result), RES_PREFIX)
+                buffer = '\n'
+        except Exception as eval_error:
+            error_message = f"Error evaluating code: {eval_error}"
+            print(error_message, file=sys.stderr)  # Print to stderr for immediate display
+            d_print(error_message, ERR_PREFIX)
+            buffer = ''
 
 # Main loop
 while True:
-    prev_keys = []
-    current_line = ""
+    prev_pressed_keys = []
     while True:
-        pressed_keys = kb.get_pressed_keys()
-        if pressed_keys != prev_keys:
-            for key in pressed_keys:
-                if key == "ENT":
+        current_pressed_keys = kb.get_pressed_keys()
+        if current_pressed_keys != prev_pressed_keys:
+            for key in current_pressed_keys:
+                if key == "GO": #The GO button on top is used to enter commands to allow for enter to be used for multiline input.
                     tft.fill_rect(0, display_height - font_height, display_width, font_height, black)
-                    y = display_height - 2 * font_height
-                    x = x_offset
-                    buffer = buffer.strip()
-                    if buffer:
-                        d_print(CMD_PREFIX + buffer)
-                        try:
-                            if "=" in buffer:
-                                exec(buffer)
-                                result = None
-                            else:
-                                result = eval(buffer)
-                            buffer = ""
-                            if result is not None:
-                                print(result)
-                                y = display_height - font_height
-                                x = x_offset
-                                d_print(RES_PREFIX + str(result))
-                                buffer = '\n'
-                        except Exception as e:
-                            print(f"Error evaluating code: {e}")
-                            d_print(ERR_PREFIX + f"Error evaluating code: {e}")
-                            buffer = ''
-                            print("here")
+                    display_y = display_height - 2 * font_height
+                    execute_command()
                     current_line = ""
-                    y = display_height - font_height
-                    x = x_offset
+                    display_y = display_height - font_height
+                    display_x = x_offset
                     tft.fill_rect(0, display_height - font_height, display_width, font_height, black)
+                elif key == "ENT": #this does not currently add a new line to the display but will function as one in a command. I think...
+                    add_character('\n')
                 elif key == "BSPC":
-                    buffer = buffer[:-1]
-                    current_line = current_line[:-1]
-                    x -= font_width
-                    if x < 0:
-                        x = (max_chars_per_line - 1) * font_width
-                        y -= font_height
-                        if y < 0:
-                            y = display_height - font_height
-                    tft.fill_rect(x, y, font_width, font_height, black)
+                    remove_character()
+                elif key == "TAB":
+                    add_character('    ', '····')  # Four spaces, four middle dots
+                elif key == "RIGHT": # Working on side scrolling since to view the text off of the screen. 
+                    #scroll_x += font_width
+                    #tft.text(font, current_line[-1], display_x - scroll_x, display_y, white, black)
+                    pass
+                elif key == "LEFT":
+                    #scroll_x = max(0, scroll_x - font_width)
+                    #tft.text(font, current_line[-1], display_x - scroll_x, display_y, white, black)
+                    pass
+                elif key == "UP": #Need to add command history logic
+                    #scroll_history = ...
+                    pass
+                elif key == "Down": #Need to add command history logic
+                    #scroll_history = ...
+                    pass
+                
+                elif key in ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "CTL", "OPT", "ALT"]:
+                    pass  # Placeholders otherwise these would end up in the input line
                 else:
                     if key == "SPC":
-                        buffer += " "
-                        current_line += " "
+                        add_character(" ")
                     else:
-                        buffer += key
-                        current_line += key
-                    if len(current_line) > max_chars_per_line:
-                        current_line = key
-                        y += font_height
-                        if y + font_height > display_height:
-                            y = y_offset
-                            tft.fill_rect(0, 0, display_width, display_height - font_height, black)
-                    tft.text(font, current_line[-1], x, y, white, black)
-                    x += font_width
-                    if x + font_width > display_width:
-                        x = x_offset
-                        buffer += '\n'
-                        y += font_height
-                        if y + font_height > display_height:
-                            y = y_offset
-                            tft.fill_rect(0, 0, display_width, display_height - font_height, black)
-        prev_keys = pressed_keys
+                        add_character(key)
+                #if current_line: #Broken side scrolling code
+                    #tft.text(font, current_line[-1], display_x - scroll_x, display_y, white, black)
+        prev_pressed_keys = current_pressed_keys
         utime.sleep_ms(DELAY_TIME)
     Pin(38, Pin.OUT).value(1)

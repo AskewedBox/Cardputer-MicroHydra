@@ -5,7 +5,14 @@ This program is still in early development, but it seems to be working so far.
 This code was built with MicroPython v1.22.1, for a Generic ESP32-S3 controller.
 
 The main function of MicroHydra is to provide an interface to easily switch between MicroPython apps.   
-Python scripts can be placed in the /apps folder on the flash, or in a /apps folder on a micro sd card. The launcher scans these two locations on startup. 
+And to help lower the barriers to entry for anyone wanting to develop apps for their Cardputer. 
+Python scripts can be placed in the /apps folder on the flash, or in a /apps folder on a micro sd card. The launcher scans these two locations on startup.   
+
+<br />
+
+Take a look at the [wiki](https://github.com/echo-lalia/Cardputer-MicroHydra/wiki) for some basic guides to get you started with a MicroPython app.
+
+If you're looking for the compiled firmware, that lives over [here](https://github.com/echo-lalia/microhydra-frozen).
 
 <br /><br /><br />
 
@@ -18,7 +25,7 @@ This program can be thought of as two main components; the launcher and the appl
 The apploader is the "main.py" file in the root directory, and it's the first thing to run when the device is powered on.   
 The apploader reads the RTC memory to determine if it should load an app, otherwise, it loads the launcher.
 
-The launcher is the main UI for the app switching functionality. Its primary responsibility is choosing an app, then storing it's path in the RTC.memory. 
+The launcher is the main UI for the app switching functionality. Its primary responsibility is choosing an app, then storing its path in the RTC.memory. 
 Once the app path is in the memory, it calls machine.reset() to refresh the system and return to the apploader, after which the apploader loads the target app. 
 
 This approach was chosen to help to prevent issues with memory managment or import conflicts between apps. Resetting the entire device means that the only thing thing loaded before the custom app, is the lightweight apploader.
@@ -33,6 +40,8 @@ Apps are designed to work very simply in this launcher. Any Python file placed i
 
 This means that a simple app can be contained as one script, which will be executed when the app is selected from the launcher.   
 It also means more complicated apps can place a startup file in the apps directory, which imports anything it needs from another folder in the filesystem. 
+
+*Quick note about apps on the SD card: The apps wont be able to use SPI slot 2 for the display (or anything else) because it will be occupied by the SD card. Thankfully, the display works fine in slot 1.*
 
 <br /><br /><br />
 
@@ -77,12 +86,10 @@ click "install or update micropython", and you should see another window:
 <br />
 <br />
 
-Now you neet to plug your Cardputer into the computer with USB. You'll probably have to put it into bootloader mode. 
-To do that, press and hold the button on the M5Stamp while plugging it into the computer.   
-The button is located here, under the sticker:
-![image](https://github.com/echo-lalia/Cardputer-MicroHydra/assets/108598670/2d65ae77-eb1a-4316-b342-690c7b051d25)   
-It is not a clicky button. So it may be a little tricky to find it at first. You can take the sticker off if you want, but you don't have to. 
-**UPDATE:** I have just learned that this button is actually wired up to G0, so the button on top of the cardputer should do the same thing, and might be easier to hit. 
+Now you need to plug your Cardputer into the computer with USB. You'll probably have to put it into bootloader mode. 
+To do that, press and hold the G0 button on the Cardputer while you plug it into your PC.
+
+The G0 button is on the back edge of the Cardputer, and there's another G0 button on the [Stamp](https://github.com/echo-lalia/Cardputer-MicroHydra/assets/108598670/2d65ae77-eb1a-4316-b342-690c7b051d25)   
 
 
 <br />
